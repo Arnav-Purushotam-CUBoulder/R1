@@ -1,0 +1,5 @@
+model,macro_f1_mean_diff_vs_mlp,macro_f1_wins_vs_mlp,ece_better_count_vs_mlp,fit_time_faster_count_vs_mlp,wilcoxon_p_macro_f1
+Extra Trees,0.02083992085230798,8,5,7,0.037109375
+HistGradientBoosting,0.016989594167273712,10,7,2,0.001953125
+Logistic Regression,-0.017111349133439445,5,4,10,0.556640625
+Random Forest,0.020067845240301807,9,5,5,0.009765625

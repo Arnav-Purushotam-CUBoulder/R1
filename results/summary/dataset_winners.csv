@@ -1,0 +1,11 @@
+dataset,best_model,best_macro_f1
+MagicTelescope,Random Forest,0.8648725497885396
+banknote-authentication,Extra Trees,0.9992639678822348
+diabetes,Random Forest,0.7500065270695119
+kc1,Extra Trees,0.6694696790158137
+phoneme,Extra Trees,0.893799884863148
+satimage,Extra Trees,0.911521876861421
+segment,HistGradientBoosting,0.9818017824510147
+spambase,Extra Trees,0.9541249661215169
+steel-plates-fault,HistGradientBoosting,1.0
+vehicle,Logistic Regression,0.7995775620987868
