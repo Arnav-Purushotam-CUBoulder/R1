@@ -4,13 +4,12 @@ import json
 import time
 import warnings
 from dataclasses import dataclass
-from itertools import product
 from pathlib import Path
 
 import numpy as np
+import openml
 import pandas as pd
 from scipy.special import softmax
-from sklearn.datasets import fetch_openml
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import ExtraTreesClassifier, HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.exceptions import ConvergenceWarning
@@ -23,12 +22,16 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 RANDOM_SEEDS = [11, 17, 23, 31, 47]
+BENCHMARK_SUITE = "OpenML-CC18"
 
 
 @dataclass(frozen=True)
 class DatasetSpec:
+    task_id: int
+    dataset_id: int
     name: str
     version: int
+    target_name: str
 
 
 @dataclass(frozen=True)
@@ -36,22 +39,20 @@ class ModelSpec:
     name: str
     estimator_name: str
     preprocess: str
-    grid: dict[str, list]
-    max_configs: int
+    configs: tuple[dict[str, object], ...]
 
 
-DATASETS = [
-    DatasetSpec("banknote-authentication", 1),
-    DatasetSpec("diabetes", 1),
-    DatasetSpec("vehicle", 1),
-    DatasetSpec("segment", 1),
-    DatasetSpec("steel-plates-fault", 1),
-    DatasetSpec("kc1", 1),
-    DatasetSpec("spambase", 1),
-    DatasetSpec("phoneme", 1),
-    DatasetSpec("satimage", 1),
-    DatasetSpec("MagicTelescope", 1),
-]
+DATASET_FILTERS = {
+    "suite": BENCHMARK_SUITE,
+    "instances_min": 500,
+    "instances_max": 20_000,
+    "predictor_features_min": 4,
+    "predictor_features_max": 60,
+    "classes_min": 2,
+    "classes_max": 10,
+    "missing_values": 0,
+    "max_symbolic_features": 1,
+}
 
 
 MODELS = [
@@ -59,58 +60,74 @@ MODELS = [
         name="Logistic Regression",
         estimator_name="logreg",
         preprocess="scaled",
-        grid={
-            "C": [0.01, 0.05, 0.2, 1.0, 5.0, 20.0],
-            "class_weight": [None, "balanced"],
-        },
-        max_configs=12,
+        configs=tuple(
+            {"C": c_value, "class_weight": class_weight}
+            for c_value in [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+            for class_weight in [None, "balanced"]
+        ),
     ),
     ModelSpec(
         name="Random Forest",
         estimator_name="rf",
         preprocess="tree",
-        grid={
-            "n_estimators": [300],
-            "max_depth": [None, 12, 24],
-            "min_samples_leaf": [1, 2, 5],
-            "max_features": ["sqrt", 0.5],
-        },
-        max_configs=12,
+        configs=tuple(
+            {
+                "n_estimators": 300,
+                "max_depth": max_depth,
+                "min_samples_leaf": min_samples_leaf,
+                "max_features": max_features,
+            }
+            for max_depth in [None, 12, 24]
+            for min_samples_leaf in [1, 2]
+            for max_features in ["sqrt", 0.5]
+        ),
     ),
     ModelSpec(
         name="Extra Trees",
         estimator_name="et",
         preprocess="tree",
-        grid={
-            "n_estimators": [300],
-            "max_depth": [None, 12, 24],
-            "min_samples_leaf": [1, 2, 5],
-            "max_features": ["sqrt", 0.5],
-        },
-        max_configs=12,
+        configs=tuple(
+            {
+                "n_estimators": 300,
+                "max_depth": max_depth,
+                "min_samples_leaf": min_samples_leaf,
+                "max_features": max_features,
+            }
+            for max_depth in [None, 12, 24]
+            for min_samples_leaf in [1, 2]
+            for max_features in ["sqrt", 0.5]
+        ),
     ),
     ModelSpec(
         name="HistGradientBoosting",
         estimator_name="hgb",
         preprocess="tree",
-        grid={
-            "learning_rate": [0.03, 0.05, 0.1],
-            "max_depth": [None, 6, 12],
-            "max_leaf_nodes": [15, 31],
-            "min_samples_leaf": [10, 20],
-        },
-        max_configs=12,
+        configs=tuple(
+            {
+                "learning_rate": learning_rate,
+                "max_depth": max_depth,
+                "max_leaf_nodes": max_leaf_nodes,
+                "min_samples_leaf": 20,
+            }
+            for learning_rate in [0.03, 0.1]
+            for max_depth in [None, 6, 12]
+            for max_leaf_nodes in [15, 31]
+        ),
     ),
     ModelSpec(
         name="MLP",
         estimator_name="mlp",
         preprocess="scaled",
-        grid={
-            "hidden_layer_sizes": [(64,), (128,), (128, 64), (256, 128)],
-            "alpha": [1e-5, 1e-4, 1e-3],
-            "learning_rate_init": [1e-4, 3e-4, 1e-3],
-        },
-        max_configs=12,
+        configs=tuple(
+            {
+                "hidden_layer_sizes": hidden_layers,
+                "alpha": alpha,
+                "learning_rate_init": learning_rate_init,
+            }
+            for hidden_layers in [(64,), (128,), (128, 64)]
+            for alpha in [1e-5, 1e-4]
+            for learning_rate_init in [3e-4, 1e-3]
+        ),
     ),
 ]
 
@@ -120,21 +137,66 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
+def discover_datasets() -> list[DatasetSpec]:
+    suite = openml.study.get_suite(BENCHMARK_SUITE)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning, module="openml.tasks.functions")
+        task_meta = openml.tasks.list_tasks(output_format="dataframe")
+    dataset_meta = openml.datasets.list_datasets(output_format="dataframe")
+
+    candidates = (
+        task_meta[task_meta["tid"].isin(suite.tasks)][["tid", "did", "target_feature"]]
+        .merge(dataset_meta, on="did", how="inner")
+        .assign(predictor_features=lambda df: df["NumberOfFeatures"] - 1)
+    )
+
+    filtered = candidates[
+        candidates["status"].eq("active")
+        & candidates["NumberOfClasses"].notna()
+        & candidates["NumberOfClasses"].between(DATASET_FILTERS["classes_min"], DATASET_FILTERS["classes_max"])
+        & candidates["NumberOfInstances"].between(DATASET_FILTERS["instances_min"], DATASET_FILTERS["instances_max"])
+        & candidates["predictor_features"].between(
+            DATASET_FILTERS["predictor_features_min"],
+            DATASET_FILTERS["predictor_features_max"],
+        )
+        & candidates["NumberOfMissingValues"].fillna(0).eq(DATASET_FILTERS["missing_values"])
+        & candidates["NumberOfSymbolicFeatures"].fillna(0).le(DATASET_FILTERS["max_symbolic_features"])
+    ].sort_values(["NumberOfInstances", "name", "did"])
+
+    return [
+        DatasetSpec(
+            task_id=int(row.tid),
+            dataset_id=int(row.did),
+            name=str(row.name),
+            version=int(row.version),
+            target_name=str(row.target_feature),
+        )
+        for row in filtered.itertuples(index=False)
+    ]
+
+
 def load_dataset(spec: DatasetSpec) -> tuple[pd.DataFrame, np.ndarray, dict]:
-    bunch = fetch_openml(name=spec.name, version=spec.version, as_frame=True, parser="auto")
-    X, y = bunch.data, bunch.target
-    if not all(pd.api.types.is_numeric_dtype(dtype) for dtype in X.dtypes):
-        raise ValueError(f"{spec.name} unexpectedly includes categorical columns.")
+    dataset = openml.datasets.get_dataset(spec.dataset_id, download_data=True)
+    X, y, categorical_indicator, feature_names = dataset.get_data(
+        target=spec.target_name,
+        dataset_format="dataframe",
+    )
+    if any(categorical_indicator):
+        raise ValueError(f"{spec.name} includes non-numeric predictor columns after filtering.")
+    X = X[feature_names].astype(float)
     y = LabelEncoder().fit_transform(y.astype(str))
     info = {
+        "task_id": spec.task_id,
+        "dataset_id": spec.dataset_id,
         "dataset": spec.name,
         "version": spec.version,
+        "target_name": spec.target_name,
         "instances": len(X),
         "features": X.shape[1],
         "classes": int(np.unique(y).size),
         "minority_share": float(pd.Series(y).value_counts(normalize=True).min()),
     }
-    return X.astype(float), y.astype(int), info
+    return X, y.astype(int), info
 
 
 def make_preprocessor(kind: str, feature_names: list[str]) -> ColumnTransformer:
@@ -180,7 +242,7 @@ def make_estimator(model: ModelSpec, params: dict, seed: int):
     if model.estimator_name == "hgb":
         return HistGradientBoostingClassifier(
             random_state=seed,
-            early_stopping=True,
+            early_stopping=False,
             **params,
         )
     if model.estimator_name == "mlp":
@@ -189,25 +251,12 @@ def make_estimator(model: ModelSpec, params: dict, seed: int):
             activation="relu",
             solver="adam",
             batch_size=128,
-            early_stopping=True,
-            max_iter=300,
-            n_iter_no_change=20,
+            early_stopping=False,
+            max_iter=500,
+            tol=1e-4,
             **params,
         )
     raise ValueError(f"Unknown estimator {model.estimator_name}")
-
-
-def iter_sampled_configs(model: ModelSpec, seed: int):
-    keys = list(model.grid)
-    values = [model.grid[key] for key in keys]
-    configs = [dict(zip(keys, combo)) for combo in product(*values)]
-    rng = np.random.default_rng(seed)
-    if len(configs) > model.max_configs:
-        indices = rng.choice(len(configs), size=model.max_configs, replace=False)
-        configs = [configs[idx] for idx in indices]
-    else:
-        rng.shuffle(configs)
-    return configs
 
 
 def multiclass_brier_score(y_true: np.ndarray, proba: np.ndarray) -> float:
@@ -300,12 +349,13 @@ def split_three_way(X: pd.DataFrame, y: np.ndarray, seed: int):
 
 def run_benchmark(output_dir: Path) -> None:
     raw_dir = ensure_dir(output_dir / "raw")
+    dataset_specs = discover_datasets()
     dataset_rows = []
     run_rows = []
     search_rows = []
 
-    for dataset_spec in DATASETS:
-        print(f"[dataset] {dataset_spec.name}", flush=True)
+    for dataset_spec in dataset_specs:
+        print(f"[dataset] {dataset_spec.name} (task {dataset_spec.task_id})", flush=True)
         X, y, dataset_info = load_dataset(dataset_spec)
         dataset_rows.append(dataset_info)
         feature_names = list(X.columns)
@@ -321,8 +371,10 @@ def run_benchmark(output_dir: Path) -> None:
                 best_record = None
                 search_start = time.perf_counter()
 
-                for idx, params in enumerate(iter_sampled_configs(model_spec, seed), start=1):
+                for idx, params in enumerate(model_spec.configs, start=1):
                     record = {
+                        "task_id": dataset_spec.task_id,
+                        "dataset_id": dataset_spec.dataset_id,
                         "dataset": dataset_spec.name,
                         "seed": seed,
                         "model": model_spec.name,
@@ -360,6 +412,7 @@ def run_benchmark(output_dir: Path) -> None:
                             best_record = {
                                 "params": params,
                                 "sort_key": sort_key,
+                                "config_index": idx,
                             }
                     except Exception as exc:
                         record.update(
@@ -376,7 +429,10 @@ def run_benchmark(output_dir: Path) -> None:
 
                 search_time = time.perf_counter() - search_start
                 if best_record is None:
-                    raise RuntimeError(f"No valid configuration for {dataset_spec.name} / {model_spec.name} / {seed}.")
+                    raise RuntimeError(
+                        f"No valid configuration for {dataset_spec.name} / {model_spec.name} / {seed}."
+                    )
+
                 final_model, test_metrics, final_fit_time = fit_and_score(
                     X_train=X_train_val,
                     y_train=y_train_val,
@@ -394,6 +450,8 @@ def run_benchmark(output_dir: Path) -> None:
 
                 run_rows.append(
                     {
+                        "task_id": dataset_spec.task_id,
+                        "dataset_id": dataset_spec.dataset_id,
                         "dataset": dataset_spec.name,
                         "seed": seed,
                         "model": model_spec.name,
@@ -407,10 +465,11 @@ def run_benchmark(output_dir: Path) -> None:
                         "search_time_sec": search_time,
                         "fit_time_sec": final_fit_time,
                         "inference_time_sec": inference_time,
+                        "selected_config_index": best_record["config_index"],
                         "selected_params_json": json.dumps(best_record["params"], sort_keys=True),
                     }
                 )
 
-    pd.DataFrame(dataset_rows).sort_values("dataset").to_csv(raw_dir / "dataset_summary.csv", index=False)
+    pd.DataFrame(dataset_rows).sort_values(["instances", "dataset"]).to_csv(raw_dir / "dataset_summary.csv", index=False)
     pd.DataFrame(search_rows).to_csv(raw_dir / "search_results.csv", index=False)
     pd.DataFrame(run_rows).to_csv(raw_dir / "run_results.csv", index=False)

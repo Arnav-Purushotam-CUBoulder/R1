@@ -12,145 +12,163 @@
 
 \begin{document}
 
-\history{Draft prepared on April 9, 2026.}
-\doi{10.1109/ACCESS.2026.0000000}
+\history{Revised draft prepared on April 9, 2026.}
+\doi{}
 
-\title{On a Laptop, Tree Ensembles Still Win: A Negative Result for Small Neural Baselines on Numerical Tabular Classification}
+\title{A Symmetric-Budget Benchmark of Classical Baselines and a Modest MLP on Numerical OpenML-CC18 Tasks}
 
-\author{\uppercase{Author Name}\authorrefmark{1}}
+\author{\uppercase{Arnav Purushotam}\authorrefmark{1}}
 
-\address[1]{Author affiliation and contact information to be inserted before submission.}
+\address[1]{University of Colorado Boulder, Boulder, CO 80309 USA (e-mail: arpu9852@colorado.edu)}
 \tfootnote{Code, experiment scripts, generated tables, and figures are included in the accompanying repository.}
 
 \markboth
-{Author Name: Tree Ensembles Still Win on a Laptop}
-{Author Name: Tree Ensembles Still Win on a Laptop}
+{Arnav Purushotam: A Symmetric-Budget Benchmark of Classical Baselines and a Modest MLP}
+{Arnav Purushotam: A Symmetric-Budget Benchmark of Classical Baselines and a Modest MLP}
 
-\corresp{Corresponding author: to be inserted before submission.}
+\corresp{Corresponding author: Arnav Purushotam (e-mail: arpu9852@colorado.edu).}
 
 \begin{abstract}
-Neural models are frequently proposed as drop-in replacements for classical machine learning on tabular data, but many practitioners work under much smaller hyperparameter and runtime budgets than contemporary benchmark papers assume. This paper reports a negative result for that pragmatic setting. We evaluate Logistic Regression, Random Forest, Extra Trees, HistGradientBoosting, and a width-limited multilayer perceptron (MLP) on \DatasetCount{} public OpenML numerical tabular classification datasets spanning 768 to 19{,}020 samples, 4 to 57 features, and both binary and multiclass tasks. Each model receives the same \SearchConfigsPerModel{}-configuration validation budget on each of \SeedCount{} random seeds, producing \TotalModelFits{} total fits on an \HardwareCPU{} laptop with \HardwareRAM{} of unified memory. We report accuracy, macro-F1, Brier score, expected calibration error (ECE), search time, fit time, and seed stability. Extra Trees attains the best mean macro-F1 (\BestMacroFOneValue{}), followed closely by Random Forest and HistGradientBoosting, while the MLP ranks last overall among the non-linear baselines (\MLPMacroFOneValue{}; mean rank \MLPMeanRank{}). HistGradientBoosting beats the MLP on all ten datasets, Random Forest on \RandomForestWinsVsMLP{}, and Extra Trees on \ExtraTreesWinsVsMLP{}; the Friedman test over datasets is significant ($p=\FriedmanPValue$). The MLP also exhibits the highest seed-to-seed variability in both macro-F1 and calibration. These results do not rule out stronger neural architectures, but they do show that a modest MLP is not the pragmatic default for small-to-medium numerical tabular workloads under laptop-scale tuning budgets.
+Neural baselines are often recommended for tabular learning, but many applied projects operate under much smaller tuning budgets than contemporary benchmark papers assume. This paper presents a symmetric-budget benchmark of five standard model families on numerical classification tasks drawn deterministically from the \BenchmarkSuiteName{} suite on OpenML. Starting from the full suite, the study retains only active tasks with \MinInstances{} to \MaxInstances{} samples, \MinFeatures{} to \MaxFeatures{} predictor features, \MinClasses{} to \MaxClasses{} classes, no missing values, and no non-numeric predictors after the task target is removed, yielding \DatasetCount{} tasks. Every model receives exactly \SearchConfigsPerModel{} fixed hyperparameter configurations on each of \SeedCount{} random seeds under the same 60/20/20 train/validation/test protocol; no model uses internal early stopping or an additional hold-out split. Across \TotalRuns{} test evaluations and \TotalModelFits{} total fits on a \HardwareCPU{} laptop with \HardwareRAM{} of unified memory, the MLP attains the best mean macro-F1 (\BestMacroFOneValue{}), while HistGradientBoosting attains the best mean rank (\BestMeanRank{}) and best mean expected calibration error (\BestECEValue{}). No model wins a majority of tasks; the MLP wins \MLPTaskWins{}, Extra Trees \ExtraTreesTaskWins{}, HistGradientBoosting \HGBTaskWins{}, Logistic Regression \LogisticTaskWins{}, and Random Forest \RandomForestTaskWins{}. The Friedman test on per-dataset ranks is not significant ($p=\FriedmanPValue$). Holm-corrected post-hoc comparisons against the MLP find no significant differences for HistGradientBoosting, Extra Trees, or Random Forest, while Logistic Regression is significantly worse. Under this symmetric laptop-scale budget, the main result is not a single best default, but a tightly clustered group of non-linear baselines.
 \end{abstract}
 
 \begin{keywords}
-benchmarking, calibration, classical machine learning, negative results, tabular classification.
+benchmarking, calibration, reproducibility, tabular classification.
 \end{keywords}
 
 \titlepgskip=-15pt
 \maketitle
 
 \section{Introduction}
-\PARstart{T}{abular} classification remains one of the most common machine learning workloads in practice, yet model selection advice is often pulled from literature that assumes generous compute budgets and extensive hyperparameter search. For many applied settings, especially exploratory work conducted on a single laptop, the practical question is narrower: when the search budget is small and the datasets are modest, is a neural baseline actually the best default choice?
+\PARstart{T}{abular} classification remains one of the most common workloads in applied machine learning, but model-selection advice is often borrowed from papers that assume broad hyperparameter searches, large compute budgets, and benchmark suites assembled for long-running comparative studies. Many practical projects start elsewhere: a single laptop, modest datasets, and enough time for only a small but defensible tuning sweep. In that setting, the real question is not whether neural methods can ever succeed on tabular data, but which baseline families remain competitive when the tuning budget is symmetric and tightly constrained.
 
-Recent benchmark studies have already challenged strong claims about deep learning on tabular data. Gorishniy \emph{et al.}\ cite{gorishniy2021} showed that carefully regularized MLP-style baselines are competitive with specialized tabular architectures, and Grinsztajn \emph{et al.}\ cite{grinsztajn2022} reported that tree-based models still outperform deep learning on many typical tabular datasets even after substantial tuning. Those papers are important, but their experimental scope and compute budgets are broader than what many small projects can afford in a single day on commodity hardware.
+Recent literature has made the broader tabular debate more nuanced. Gorishniy \emph{et al.}\ \cite{gorishniy2021} showed that well-regularized MLP baselines are harder to beat than some earlier work implied. Grinsztajn \emph{et al.}\ \cite{grinsztajn2022} then argued that tree-based methods still dominate many typical tabular problems, even under more extensive tuning effort. Those papers are important, but their scope is broader than the smaller-budget decision faced by many practitioners. A laptop-scale benchmark asks a different question: if several standard model families receive the same small validation budget, does any one of them clearly emerge as the default first model?
 
-This paper narrows the question to a laptop-scale regime and asks whether a modest multilayer perceptron is a sensible default baseline for \emph{numerical} tabular classification when each model gets the same small validation budget. The answer, on the benchmark studied here, is no. Across \DatasetCount{} public datasets and \TotalRuns{} evaluated runs, the tree ensembles consistently outperform the MLP in macro-F1, usually improve calibration, and produce more stable results across random seeds. The goal is not to argue that neural models are categorically ineffective on tabular data, but to show that under tight budgets a simple MLP remains a weak practical default compared with tuned classical ensembles.
+This paper studies that narrower question on a deterministic subset of numerical tasks from \BenchmarkSuiteName{}. The contribution is not a new learning algorithm. It is a controlled benchmark design that removes two common sources of ambiguity in small empirical studies: ad hoc dataset selection and hidden validation asymmetry across models. The benchmark fixes a transparent inclusion rule, uses the same explicit train/validation/test split for every model, disables estimator-level early stopping that would otherwise consume extra validation data, and evaluates calibration and stability in addition to predictive performance.
 
-The contributions of this work are threefold:
+The contributions are threefold:
 \begin{itemize}
-\item A reproducible laptop-scale benchmark covering \DatasetCount{} public numerical tabular classification datasets, five standard model families, and \TotalModelFits{} total fits under a fixed per-model validation budget.
-\item A multi-metric comparison that includes macro-F1, accuracy, Brier score, ECE, search time, fit time, and seed stability rather than only point accuracy.
-\item A negative empirical result: the MLP ranks last overall, while tree ensembles dominate aggregate performance and stability under the chosen compute budget.
+\item A deterministic benchmark construction rule over \BenchmarkSuiteName{} that avoids post hoc dataset curation and yields \DatasetCount{} numerical classification tasks with published OpenML task and dataset IDs.
+\item A symmetric protocol in which each model receives exactly \SearchConfigsPerModel{} configurations per seed under the same 60/20/20 split, with no estimator receiving extra hidden validation data.
+\item An empirical result that is more restrained than a simple win/loss narrative: under this budget, the strongest non-linear baselines are tightly clustered, the MLP attains the best mean macro-F1, HistGradientBoosting attains the best mean rank and calibration, and no single model wins a majority of tasks.
 \end{itemize}
 
 \section{Related Work}
-Large comparative studies long predate the current wave of tabular deep learning. Caruana and Niculescu-Mizil compared diverse supervised learning methods over multiple benchmark tasks and highlighted the importance of broad experimental evaluation. More recently, open benchmarking infrastructures such as OpenML have made it easier to package datasets, code, and exact evaluation settings for replication and extension \cite{vanschoren2014}.
+Open benchmarking infrastructures such as OpenML make it practical to package datasets, code, and evaluation settings in a form that other researchers can inspect and extend \cite{vanschoren2014}. That infrastructure has been especially useful in tabular learning, where conclusions can depend strongly on the exact benchmark composition and protocol.
 
-Tree-based ensembles remain strong baselines for tabular data. Random Forests \cite{breiman2001} and Extremely Randomized Trees \cite{geurts2006} are widely used because they train quickly, tolerate heterogeneous feature scales, and often perform well with limited tuning. Gradient boosting methods, including the greedy function approximation formulation introduced by Friedman \cite{friedman2001}, are also standard high-performance choices for tabular prediction.
+Classical ensemble methods remain strong baselines for tabular data. Random Forests \cite{breiman2001} and Extremely Randomized Trees \cite{geurts2006} are robust default choices because they tolerate unscaled inputs, train quickly, and often perform well with limited tuning. Gradient boosting methods based on Friedman's additive modeling formulation \cite{friedman2001} are also standard high-performance baselines.
 
-For neural models, two observations from the recent literature are especially relevant here. First, strong regularized MLP baselines are harder to beat than some papers suggest \cite{gorishniy2021}. Second, even after careful random search, tree-based models often remain superior on medium-scale tabular problems \cite{grinsztajn2022}. The present study aligns with that line of evidence, but focuses on a smaller and more explicitly budgeted setting: a width-limited MLP against classical baselines, all tuned under the same modest search budget on a single laptop.
+For neural models, two observations from recent work matter most here. First, strong MLP baselines are more competitive than weakly tuned neural baselines suggest \cite{gorishniy2021}. Second, even after broader random-search budgets, tree-based methods often remain stronger on many medium-scale tabular problems \cite{grinsztajn2022}. The present study is narrower than that literature. It does not compare transformers or specialized tabular neural architectures. It asks whether a modest MLP baseline remains competitive when the budget is explicitly small and shared symmetrically across model families.
 
-Because negative results in benchmarking are only convincing when they are evaluated carefully, the statistical comparison follows Dem\v{s}ar's recommendations for multiple classifiers over multiple datasets \cite{demsar2006}. Calibration is reported with Brier score \cite{brier1950} and expected calibration error, following the modern calibration framing of Guo \emph{et al.}\ \cite{guo2017}.
+Because benchmark claims are only convincing when the statistical framing is explicit, the analysis follows Dem\v{s}ar's recommendations for comparing multiple classifiers over multiple datasets \cite{demsar2006}. Calibration is reported with the Brier score \cite{brier1950} and expected calibration error (ECE), following the modern calibration framing popularized by Guo \emph{et al.}\ \cite{guo2017}.
 
-\section{Experimental Design}
+\section{Benchmark Construction}
 \subsection{Research Question}
-The study tests the following hypothesis: under a laptop-scale hyperparameter budget on small-to-medium numerical tabular classification problems, carefully tuned classical models outperform a modest MLP not only in predictive performance but also in calibration and seed stability.
+The study tests the following hypothesis: under a fixed laptop-scale search budget on small-to-medium numerical tabular classification tasks, several standard non-linear baselines remain competitive, and any claim of a clear universal default should be supported by a symmetric protocol and task-level statistical evidence.
 
-\subsection{Datasets}
-The benchmark uses \DatasetCount{} public classification datasets loaded from OpenML \cite{vanschoren2014}. To keep preprocessing simple and isolate model behavior from categorical encoding choices, only numerical tabular datasets were included. Table~\ref{tab:datasets} summarizes the benchmark.
+\subsection{Dataset Inclusion Rule}
+The benchmark starts from the full \BenchmarkSuiteName{} classification suite on OpenML. Tasks were retained only if they satisfied all of the following conditions before any experiments were run:
+\begin{itemize}
+\item active OpenML status;
+\item \MinClasses{} to \MaxClasses{} classes;
+\item \MinInstances{} to \MaxInstances{} total samples;
+\item \MinFeatures{} to \MaxFeatures{} predictor features after excluding the target column;
+\item zero missing values according to OpenML metadata;
+\item at most one symbolic feature in the raw metadata, to allow for a symbolic target column; and
+\item exclusively numeric predictor columns after loading the task-defined target.
+\end{itemize}
+No manual additions or removals were made after this rule was fixed. Table~\ref{tab:datasets} lists the resulting tasks together with their OpenML task and dataset IDs.
 
 \begin{table}[!t]
-\caption{Benchmark datasets. Minority share is the fraction of examples in the least frequent class.}
+\caption{Benchmark tasks selected deterministically from \BenchmarkSuiteName{}. Task ID and Data ID refer to OpenML identifiers. Minority share is the fraction of examples in the least frequent class.}
 \label{tab:datasets}
 \centering
 \scriptsize
 \resizebox{\columnwidth}{!}{\input{generated/table_datasets.tex}}
 \end{table}
 
-\subsection{Models and Search Budget}
+\subsection{Model Families and Search Budget}
 Five model families were evaluated:
 \begin{enumerate}
-\item Logistic Regression with standardized inputs.
-\item Random Forest.
-\item Extra Trees.
-\item HistGradientBoosting.
-\item A width-limited MLP with ReLU activations, Adam optimization, and early stopping.
+\item Logistic Regression with median imputation and standardization.
+\item Random Forest with median imputation.
+\item Extra Trees with median imputation.
+\item HistGradientBoosting with median imputation.
+\item A width-limited MLP with ReLU activations, Adam optimization, median imputation, and standardization.
 \end{enumerate}
 
-Every dataset-model-seed combination received the same validation budget: \SearchConfigsPerModel{} sampled hyperparameter configurations, selected from a predefined model-specific search space. The budget was intentionally small, reflecting the type of search a practitioner can reasonably finish on a laptop in under a day. This produces \TotalRuns{} final test evaluations and \TotalModelFits{} total fits when validation-search fits are counted.
+Every dataset-model-seed combination received exactly \SearchConfigsPerModel{} hyperparameter configurations drawn from a fixed model-specific grid. The grids are listed in Appendix~A. The key design choice is budget symmetry: every model is tuned on the same explicit validation split, and no model uses internal early stopping or any other additional validation fraction during fitting. This yields \TotalRuns{} final test evaluations and \TotalModelFits{} total fits when search-stage fits are included.
 
-\subsection{Protocol}
-For each dataset and random seed, the data were split into 60\% train, 20\% validation, and 20\% test partitions using stratified sampling. Hyperparameters were selected by validation macro-F1. The best configuration was then retrained on the union of the training and validation partitions and evaluated on the held-out test partition.
+\subsection{Evaluation Protocol}
+For each task and random seed, the data were split with stratified sampling into 60\% train, 20\% validation, and 20\% test partitions. Hyperparameters were selected by validation macro-F1. The chosen configuration was then retrained on the union of the train and validation partitions and evaluated once on the held-out test partition.
 
-Numerical preprocessing used median imputation for all models. Logistic Regression and the MLP additionally used standardization. The primary ranking metric was macro-F1 because several datasets are imbalanced or multiclass. Accuracy, Brier score, ECE, search time, fit time, and inference time were also recorded. Aggregate model comparisons over datasets were assessed with the Friedman test \cite{demsar2006}.
+The primary ranking metric is macro-F1 because several tasks are imbalanced or multiclass. Accuracy, Brier score, ECE, search time, fit time, and inference time were also recorded. To avoid pseudoreplication, statistical tests were performed on per-dataset mean macro-F1 aggregated over the \SeedCount{} seeds, so each dataset contributed one paired observation per model. The omnibus comparison used the Friedman test \cite{demsar2006}; post-hoc comparisons against the MLP used paired Wilcoxon signed-rank tests with Holm correction.
 
 \subsection{Hardware}
-All experiments ran on a single \HardwareCPU{} laptop with \HardwareRAM{} of unified memory running macOS 26.3.1. Summing wall-clock validation search and final training times across all runs yields about 23.7 minutes of total compute for the benchmark.
+All experiments ran on a single \HardwareCPU{} laptop with \HardwareRAM{} of unified memory running macOS 26.3.1. Summing validation-search and final-fit wall-clock time over all runs yields \BenchmarkWallMinutes{} minutes of total compute. Runtime comparisons should still be interpreted cautiously because they depend on the specific software implementations and estimator-level parallelism available on this hardware.
 
 \section{Results}
 \subsection{Aggregate Performance}
-Table~\ref{tab:overall} reports the aggregate results. Extra Trees achieves the best mean macro-F1 (\BestMacroFOneValue{}), while Random Forest achieves the best mean rank (\BestMeanRank{}). HistGradientBoosting trails closely in macro-F1 and produces the best average calibration (ECE 0.032). The MLP reaches only \MLPMacroFOneValue{} mean macro-F1 and finishes last by average rank.
+Table~\ref{tab:overall} reports the aggregate results over all tasks and seeds. The MLP attains the best mean macro-F1 (\BestMacroFOneValue{}), while HistGradientBoosting attains the best mean rank (\BestMeanRank{}) and best mean ECE (\BestECEValue{}). The ranking margins among the strongest non-linear models are small: HistGradientBoosting has mean rank \BestMeanRank{}, the MLP has \MLPMeanRank{}, and Extra Trees follows closely behind. No model wins a majority of the \DatasetCount{} tasks. The task-win counts are \MLPTaskWins{} for the MLP, \ExtraTreesTaskWins{} for Extra Trees, \HGBTaskWins{} for HistGradientBoosting, \LogisticTaskWins{} for Logistic Regression, and \RandomForestTaskWins{} for Random Forest.
 
 \begin{table}[!t]
-\caption{Aggregate benchmark results across all datasets and seeds. Lower is better for rank, Brier, ECE, and time.}
+\caption{Aggregate benchmark results across all tasks and seeds. Lower is better for rank, Brier, ECE, and time.}
 \label{tab:overall}
 \centering
 \scriptsize
 \resizebox{\columnwidth}{!}{\input{generated/table_overall.tex}}
 \end{table}
 
-The negative-result signal is not marginal. Relative to the MLP, Extra Trees improves mean macro-F1 by \ExtraTreesMacroGainVsMLP{}, and HistGradientBoosting improves it by \HGBMacroGainVsMLP{}. The Friedman test across the five models is significant ($p=\FriedmanPValue$), indicating that the ranking differences are unlikely to be explained by random variation alone.
+The omnibus Friedman test on per-dataset mean ranks is not significant ($p=\FriedmanPValue$). In other words, after the benchmark is made deterministic and the validation budget is equalized, the suite does not support a claim that one of the top non-linear baselines clearly dominates the others.
 
-\subsection{Per-Dataset Comparison Against the MLP}
-The MLP does not win the benchmark on any dataset. HistGradientBoosting outperforms the MLP on all \DatasetCount{} datasets, Random Forest on \RandomForestWinsVsMLP{}, and Extra Trees on \ExtraTreesWinsVsMLP{}. The only dataset won by a linear model is \textit{vehicle}, where Logistic Regression achieves the strongest macro-F1, indicating that the benchmark is not simply rewarding non-linearity by construction.
+\subsection{Comparison Against the MLP Baseline}
+Table~\ref{tab:vs-mlp} isolates the comparisons against the MLP. HistGradientBoosting, Extra Trees, and Random Forest beat the MLP on \HGBWinsVsMLP{}, \ExtraTreesWinsVsMLP{}, and \RandomForestWinsVsMLP{} tasks, respectively, but their mean macro-F1 differences relative to the MLP are only \HGBMacroGainVsMLP{}, \ExtraTreesMacroGainVsMLP{}, and \RandomForestMacroGainVsMLP{}. After Holm correction, none of those pairwise differences is significant (\HGBHolmP{}, \ExtraTreesHolmP{}, and \RandomForestHolmP{}). Logistic Regression is different: it wins only \LogisticWinsVsMLP{} tasks, trails the MLP by \LogisticMacroGainVsMLP{} mean macro-F1, and remains significantly worse after correction (\LogisticHolmP{}).
 
 \begin{figure}[!t]
 \centering
 \includegraphics[width=\columnwidth]{../results/figures/macro_f1_vs_fit_time.png}
-\caption{Aggregate macro-F1 versus final fit time. Extra Trees and Random Forest occupy the strongest part of the accuracy-time frontier, while the MLP is slower than these tree ensembles and less accurate.}
+\caption{Mean macro-F1 versus mean final fit time. The figure highlights the practical trade-off rather than only the accuracy ranking.}
 \label{fig:tradeoff}
 \end{figure}
 
-Figure~\ref{fig:tradeoff} summarizes the performance-time trade-off. Logistic Regression is the fastest model to search and fit, but it gives up too much predictive performance on most datasets. The more important practical observation is that the MLP is not competitive on the frontier either: it is substantially slower to fit than Extra Trees (\MLPFitTime{}~s versus \ExtraTreesFitTime{}~s on average) while still delivering lower macro-F1.
+Figure~\ref{fig:tradeoff} clarifies the practical trade-off. Logistic Regression remains the fastest baseline, but it is usually less accurate. The MLP's modest macro-F1 edge does not come with best calibration or best runtime: Extra Trees reaches similar average accuracy with far lower fit time, while HistGradientBoosting trades more compute for the strongest mean rank and calibration.
 
 \subsection{Calibration and Stability}
-Calibration and stability reinforce the same conclusion. HistGradientBoosting attains the best mean ECE, and the MLP has the worst average calibration variance across seeds. Table~\ref{tab:stability} shows that the MLP also has the largest mean seed-to-seed macro-F1 standard deviation (\MLPStability{}), while the classical baselines remain more stable.
+Calibration does not identify a single clear winner either, but it does favor HistGradientBoosting. Its mean ECE is \BestECEValue{}, compared with \MLPMeanECE{} for the MLP. Table~\ref{tab:stability} reports seed-to-seed variability aggregated over tasks. The stability differences are also small: the MLP's mean macro-F1 standard deviation is \MLPStability{}, placing it in the middle of the pack rather than at either extreme. Taken together, these results suggest that the main story of the benchmark is clustering among the stronger non-linear baselines, not a clean separation.
 
 \begin{table}[!t]
-\caption{Average seed-to-seed variability aggregated over datasets. Lower is better.}
+\caption{Average seed-to-seed variability aggregated over tasks. Lower is better.}
 \label{tab:stability}
 \centering
 \scriptsize
 \resizebox{\columnwidth}{!}{\input{generated/table_stability.tex}}
 \end{table}
 
-This matters because in small-data regimes practitioners often run a model only a handful of times. A model family that is sensitive to initialization and split choice imposes additional hidden cost even when its average score looks acceptable. In this benchmark, the MLP is weaker both in mean performance and in repeatability.
-
 \section{Discussion}
-The results support a restrained but useful conclusion: on small-to-medium numerical tabular classification tasks, a modest MLP is not the pragmatic default under a fixed laptop-scale tuning budget. That conclusion is narrower than a universal claim about neural networks on tabular data, but it is also closer to a realistic day-to-day decision boundary for practitioners.
+The most important outcome of this revision is methodological as well as empirical. Once dataset selection is deterministic and hidden validation asymmetries are removed, the benchmark no longer supports a simple narrative in which one top non-linear baseline obviously defeats the others. Instead, the result is a tightly clustered group: the MLP leads in mean macro-F1, HistGradientBoosting leads in mean rank and calibration, Extra Trees offers a strong runtime profile, and Logistic Regression remains a useful speed baseline that still wins a few tasks.
 
-Three details are worth emphasizing. First, the tree ensembles do not win by an artifact of poor calibration reporting; they remain competitive or better even when Brier score and ECE are included. Second, the MLP is not simply undercut by a linear baseline, because the strongest competitors are usually non-linear ensembles rather than Logistic Regression. Third, the compute story matters: the MLP does not recover its weaker macro-F1 with a runtime advantage over the best-performing tree ensemble.
+That finding is practically useful. Under a small laptop-scale budget, the right lesson is not to elevate a single universal default, but to begin with a compact and diverse baseline set. On this benchmark, a pragmatic first pass would include one fast linear model, one or two tree ensembles, and a modest MLP rather than betting on only one family. The close clustering among the stronger non-linear models also suggests that benchmark conclusions in this regime are sensitive to protocol design, which makes explicit symmetry and transparent task construction especially important.
 
-These findings are directionally consistent with the broader tabular deep learning literature \cite{gorishniy2021,grinsztajn2022}, but they also sharpen the practitioner-facing message. When the search budget is constrained to roughly two dozen minutes of total experiment time on a laptop, tree ensembles remain the safer first choice.
+This is still a narrow claim. The study does not test transformers, foundation-style pretraining for tabular data, broader searches, or raw high-cardinality categorical feature pipelines. It reports what happens when commonly available model families are tuned under the same small budget on numerical tasks of this scale.
 
 \section{Limitations}
-This study has several limitations. Only numerical datasets were included, so the results do not directly address high-cardinality categorical problems. The neural baseline is a modest MLP rather than a transformer or a recent specialized tabular architecture, so the findings should not be overstated as a rejection of all deep learning methods for tabular data. The tuning budget is intentionally small, which is a feature for the target use case but also means the paper does not test whether much larger neural searches could close the gap. Finally, no attempt was made to optimize hardware-specific training kernels or mixed-precision settings for the MLP.
+This study has several limitations. Only numerical tasks were included, so the result does not transfer directly to problems dominated by high-cardinality categorical variables or text-derived features. The neural comparison is deliberately modest: it is a small MLP baseline rather than a transformer or a newer specialized tabular architecture. The tuning budget is intentionally small, which suits the target use case but does not test whether broader searches would separate the model families more clearly. Finally, the runtime measurements are implementation-specific and should not be interpreted as framework-independent statements about the intrinsic computational efficiency of each model family.
 
 \section{Conclusion}
-This paper presented a reproducible negative result for laptop-scale numerical tabular classification. Under a fixed \SearchConfigsPerModel{}-configuration search budget, tree ensembles outperform a width-limited MLP on aggregate macro-F1, rank, and stability across \DatasetCount{} public datasets. Extra Trees delivers the strongest average macro-F1, Random Forest the best average rank, and HistGradientBoosting the best average calibration, while the MLP ranks last overall and varies the most across seeds. For small-to-medium numerical tabular workloads, the evidence here supports a simple recommendation: start with classical ensembles, not with a modest neural baseline.
+This paper presented a symmetric-budget benchmark of classical baselines and a modest MLP on deterministically selected numerical tasks from \BenchmarkSuiteName{}. With exactly \SearchConfigsPerModel{} configurations per model and the same explicit 60/20/20 split for every estimator, the benchmark does not reveal a single clear winner among the strongest non-linear baselines. The MLP achieves the best mean macro-F1, HistGradientBoosting achieves the best mean rank and calibration, and the Friedman test does not support a significant omnibus separation. For this narrow but common laptop-scale regime, the evidence supports using a small set of complementary baselines rather than assuming one universal default.
 
 \appendices
-\section{Detailed Comparison Against the MLP}
+\section{Exact Hyperparameter Grids}
+Each dataset-model-seed combination evaluated exactly \SearchConfigsPerModel{} hyperparameter configurations before the final refit on train$+$validation data:
+\begin{itemize}
+\item Logistic Regression: $C \in \{0.01, 0.1, 1, 10, 100, 1000\}$ and class weight in \{none, balanced\}.
+\item Random Forest: 300 trees, max depth in \{none, 12, 24\}, minimum samples per leaf in \{1, 2\}, and max features in \{sqrt, 0.5\}.
+\item Extra Trees: 300 trees, max depth in \{none, 12, 24\}, minimum samples per leaf in \{1, 2\}, and max features in \{sqrt, 0.5\}.
+\item HistGradientBoosting: learning rate in \{0.03, 0.1\}, max depth in \{none, 6, 12\}, max leaf nodes in \{15, 31\}, minimum samples per leaf fixed at 20, and internal early stopping disabled.
+\item MLP: hidden layers in \{(64), (128), (128, 64)\}, $L_2$ penalty in \{$10^{-5}$, $10^{-4}$\}, learning rate in \{$3 \times 10^{-4}$, $10^{-3}$\}, batch size 128, maximum iterations 500, and internal early stopping disabled.
+\end{itemize}
+
+\section{Pairwise Comparison Against the MLP}
 \begin{table}[!t]
 \caption{Pairwise aggregate comparison against the MLP baseline.}
 \label{tab:vs-mlp}
@@ -158,9 +176,6 @@ This paper presented a reproducible negative result for laptop-scale numerical t
 \scriptsize
 \resizebox{\columnwidth}{!}{\input{generated/table_vs_mlp.tex}}
 \end{table}
-
-\section*{Acknowledgment}
-The acknowledgment section is intentionally left blank in this draft and can be completed before submission.
 
 \begin{thebibliography}{00}
 \bibitem{vanschoren2014}

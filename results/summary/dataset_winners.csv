@@ -1,11 +1,26 @@
 dataset,best_model,best_macro_f1
-MagicTelescope,Random Forest,0.8648725497885396
-banknote-authentication,Extra Trees,0.9992639678822348
-diabetes,Random Forest,0.7500065270695119
-kc1,Extra Trees,0.6694696790158137
+GesturePhaseSegmentationProcessed,Extra Trees,0.661915282989095
+balance-scale,MLP,0.9337683038180158
+banknote-authentication,MLP,1.0
+blood-transfusion-service-center,MLP,0.674375912038806
+climate-model-simulation-crashes,Logistic Regression,0.8179162896836141
+diabetes,Random Forest,0.7455672306895489
+first-order-theorem-proving,Extra Trees,0.5134696961251124
+kc1,HistGradientBoosting,0.674725875428564
+kc2,Random Forest,0.7203215114093077
+mfeat-morphological,Logistic Regression,0.750063101299237
+mfeat-zernike,Logistic Regression,0.8179109694326627
+pc1,HistGradientBoosting,0.6836343882301423
+pc3,MLP,0.6317563710189918
+pc4,MLP,0.7786350268247235
+pendigits,Extra Trees,0.9951046984351903
 phoneme,Extra Trees,0.893799884863148
-satimage,Extra Trees,0.911521876861421
-segment,HistGradientBoosting,0.9818017824510147
+qsar-biodeg,MLP,0.8792185463553699
+satimage,HistGradientBoosting,0.910816817441767
+segment,Extra Trees,0.9400568233995387
 spambase,Extra Trees,0.9541249661215169
-steel-plates-fault,HistGradientBoosting,1.0
-vehicle,Logistic Regression,0.7995775620987868
+steel-plates-fault,HistGradientBoosting,0.8258959999762098
+vehicle,MLP,0.8393574594546026
+wall-robot-navigation,HistGradientBoosting,0.9958402318738051
+wdbc,Logistic Regression,0.9733555913990113
+wilt,MLP,0.9492509964299736

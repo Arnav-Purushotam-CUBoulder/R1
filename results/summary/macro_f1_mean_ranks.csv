@@ -1,6 +1,6 @@
 model,mean_rank
-Random Forest,2.1
-Extra Trees,2.3
-HistGradientBoosting,2.4
-Logistic Regression,4.0
-MLP,4.2
+HistGradientBoosting,2.6
+MLP,2.64
+Extra Trees,2.84
+Random Forest,3.32
+Logistic Regression,3.6

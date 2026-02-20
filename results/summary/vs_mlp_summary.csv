@@ -1,5 +1,5 @@
-model,macro_f1_mean_diff_vs_mlp,macro_f1_wins_vs_mlp,ece_better_count_vs_mlp,fit_time_faster_count_vs_mlp,wilcoxon_p_macro_f1
-Extra Trees,0.02083992085230798,8,5,7,0.037109375
-HistGradientBoosting,0.016989594167273712,10,7,2,0.001953125
-Logistic Regression,-0.017111349133439445,5,4,10,0.556640625
-Random Forest,0.020067845240301807,9,5,5,0.009765625
+model,macro_f1_mean_diff_vs_mlp,macro_f1_wins_vs_mlp,ece_better_count_vs_mlp,fit_time_faster_count_vs_mlp,wilcoxon_p_macro_f1,holm_adjusted_p_macro_f1,holm_significant_005
+HistGradientBoosting,-0.012105809305595811,12,15,10,0.6720751523971558,1.0,False
+Extra Trees,-0.01815772573324125,12,10,25,0.5424043536186218,1.0,False
+Random Forest,-0.023271077194462822,11,11,24,0.24106645584106445,0.7231993675231934,False
+Logistic Regression,-0.05572024922212493,6,13,25,3.814697265625e-05,0.000152587890625,True
