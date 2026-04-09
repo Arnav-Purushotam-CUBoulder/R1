@@ -12,21 +12,23 @@
 
 \begin{document}
 
-\history{Revised draft prepared on April 9, 2026.}
+\vol{}
+\year{}
+\history{}
 \doi{}
 
 \title{A Symmetric-Budget Benchmark of Classical Baselines and a Modest MLP on Numerical OpenML-CC18 Tasks}
 
 \author{\uppercase{Arnav Purushotam}\authorrefmark{1}}
 
-\address[1]{University of Colorado Boulder, Boulder, CO 80309 USA (e-mail: arpu9852@colorado.edu)}
+\address[1]{University of Colorado Boulder, Boulder, CO 80309 USA (e-mail: arnavpsusa@gmail.com)}
 \tfootnote{Code, experiment scripts, generated tables, and figures are included in the accompanying repository.}
 
 \markboth
 {Arnav Purushotam: A Symmetric-Budget Benchmark of Classical Baselines and a Modest MLP}
 {Arnav Purushotam: A Symmetric-Budget Benchmark of Classical Baselines and a Modest MLP}
 
-\corresp{Corresponding author: Arnav Purushotam (e-mail: arpu9852@colorado.edu).}
+\corresp{Corresponding author: Arnav Purushotam (e-mail: arnavpsusa@gmail.com).}
 
 \begin{abstract}
 Neural baselines are often recommended for tabular learning, but many applied projects operate under much smaller tuning budgets than contemporary benchmark papers assume. This paper presents a symmetric-budget benchmark of five standard model families on numerical classification tasks drawn deterministically from the \BenchmarkSuiteName{} suite on OpenML. Starting from the full suite, the study retains only active tasks with \MinInstances{} to \MaxInstances{} samples, \MinFeatures{} to \MaxFeatures{} predictor features, \MinClasses{} to \MaxClasses{} classes, no missing values, and no non-numeric predictors after the task target is removed, yielding \DatasetCount{} tasks. Every model receives exactly \SearchConfigsPerModel{} fixed hyperparameter configurations on each of \SeedCount{} random seeds under the same 60/20/20 train/validation/test protocol; no model uses internal early stopping or an additional hold-out split. Across \TotalRuns{} test evaluations and \TotalModelFits{} total fits on a \HardwareCPU{} laptop with \HardwareRAM{} of unified memory, the MLP attains the best mean macro-F1 (\BestMacroFOneValue{}), while HistGradientBoosting attains the best mean rank (\BestMeanRank{}) and best mean expected calibration error (\BestECEValue{}). No model wins a majority of tasks; the MLP wins \MLPTaskWins{}, Extra Trees \ExtraTreesTaskWins{}, HistGradientBoosting \HGBTaskWins{}, Logistic Regression \LogisticTaskWins{}, and Random Forest \RandomForestTaskWins{}. The Friedman test on per-dataset ranks is not significant ($p=\FriedmanPValue$). Holm-corrected post-hoc comparisons against the MLP find no significant differences for HistGradientBoosting, Extra Trees, or Random Forest, while Logistic Regression is significantly worse. Under this symmetric laptop-scale budget, the main result is not a single best default, but a tightly clustered group of non-linear baselines.
